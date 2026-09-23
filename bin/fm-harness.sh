@@ -167,14 +167,11 @@ ancestry_names_omp() {
 # omp ancestry, so the same table decides it. Kept to the same eight hops
 # the POSIX walk allows.
 _fm_ancestry_names_omp_win32() {
-  local winpid line ppid comm args hops=0
+  local winpid ppid comm args hops=0
   for winpid in $(fm_win32_ancestor_winpids); do
     [ "$hops" -lt 8 ] || break
     hops=$((hops + 1))
-    line=$(fm_win32_proc_fields "$winpid") || break
-    IFS=$'\t' read -r ppid comm args <<EOF
-$line
-EOF
+    fm_win32_proc_get "$winpid" ppid comm args || break
     [ "$(basename -- "$comm")" = omp ] && return 0
   done
   return 1
@@ -313,12 +310,9 @@ harness_ancestry() {  # [<pid>]
 # ancestor list already bridges the Cygwin fork-stub gap and the Cygwin/Win32
 # pid spaces, so this walk only applies the shared verdict per hop.
 _fm_harness_ancestry_win32() {  # [<pid>]
-  local winpid line ppid comm args verdict
+  local winpid ppid comm args verdict
   for winpid in $(fm_win32_ancestor_winpids ${1:+"$1"}); do
-    line=$(fm_win32_proc_fields "$winpid") || break
-    IFS=$'\t' read -r ppid comm args <<EOF
-$line
-EOF
+    fm_win32_proc_get "$winpid" ppid comm args || break
     verdict=$(harness_verdict_for_fields "$comm" "$args" "${args%% *}")
     [ -z "$verdict" ] || { echo "$verdict"; return; }
   done
@@ -378,11 +372,7 @@ process_descent_path() {  # <root> [<eligible-leaf-pid>...]
         if [ "$hit" = 1 ]; then
           verdict=
           if [ "$win32_pairs" = 1 ]; then
-            line=$(fm_win32_proc_fields "$child" 2>/dev/null) || line=
-            if [ -n "$line" ]; then
-              rest=${line#*$'\t'}
-              comm=${rest%%$'\t'*}
-              args=${rest#*$'\t'}
+            if fm_win32_proc_get "$child" rest comm args 2>/dev/null; then
               verdict=$(harness_verdict_for_fields "$comm" "$args" "${args%% *}")
             fi
           else

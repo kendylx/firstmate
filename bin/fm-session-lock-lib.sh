@@ -113,12 +113,9 @@ fm_harness_process_matches() {  # <comm> <args>
 # bridges the Cygwin fork-stub gap and the Cygwin/Win32 pid spaces, so this
 # walk only applies the contiguous-run rule per hop.
 _fm_harness_ancestry_pids_win32() {
-  local winpid ppid comm args extending=0 printed=0 line
+  local winpid ppid comm args extending=0 printed=0
   for winpid in $(fm_win32_ancestor_winpids); do
-    line=$(fm_win32_proc_fields "$winpid") || break
-    IFS=$'\t' read -r ppid comm args <<EOF
-$line
-EOF
+    fm_win32_proc_get "$winpid" ppid comm args || break
     if fm_harness_process_matches "$comm" "$args"; then
       printf '%s\n' "$winpid"
       printed=1
@@ -271,7 +268,7 @@ fm_session_lock_trusted_session_id() {  # [<ancestry-pids>]
       # it the same way rather than trusting an empty re-verification as proof
       # of nothing.
       local win32_line
-      win32_line=$(_fm_win32_lookup "$pid") || return 1
+      win32_line=$(fm_win32_proc_fields "$pid") || return 1
       IFS=$'\t' read -r _ comm args <<EOF
 $win32_line
 EOF

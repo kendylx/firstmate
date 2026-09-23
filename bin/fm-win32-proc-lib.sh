@@ -36,6 +36,11 @@
 _FM_WIN32_TABLE=
 _FM_WIN32_TABLE_LOADED=0
 _FM_WIN32_UNAVAILABLE=0
+# Row index built once at load: _FM_WIN32_ROW[pid]="<ppid>\t<comm>\t<args>",
+# the exact bytes fm_win32_proc_fields would print for that pid. Hot loops
+# (ancestry climbs on hosts where every fork is expensive) read it through
+# fm_win32_proc_get with zero process spawns per hop.
+declare -A _FM_WIN32_ROW=()
 
 # True when a PowerShell binary capable of answering Win32_Process is on PATH.
 # Sticky: a failed probe or load is remembered so a missing or broken
@@ -63,6 +68,16 @@ fm_win32_proc_load() {
     return 1
   fi
   _FM_WIN32_TABLE_LOADED=1
+  _FM_WIN32_ROW=()
+  local _r_pid _r_ppid _r_name _r_path _r_cmd _r_comm
+  while IFS=$'\t' read -r _r_pid _r_ppid _r_name _r_path _r_cmd; do
+    _r_comm=${_r_path:-$_r_name}
+    _r_comm=${_r_comm//\\//}
+    case "$_r_comm" in *.[Ee][Xx][Ee]) _r_comm=${_r_comm%.*} ;; esac
+    _FM_WIN32_ROW[$_r_pid]=$_r_ppid$'\t'$_r_comm$'\t'${_r_cmd//\\//}
+  done <<EOF
+$_FM_WIN32_TABLE
+EOF
   return 0
 }
 
@@ -74,20 +89,24 @@ fm_win32_proc_load() {
 # including the anchored ^pi$/^omp$ alternatives, which a bare "pi.exe" would
 # otherwise miss.
 fm_win32_proc_fields() {  # <pid>
-  local pid=$1 found_pid found_ppid found_name found_path found_cmd comm
   fm_win32_proc_load || return 1
-  while IFS=$'\t' read -r found_pid found_ppid found_name found_path found_cmd; do
-    [ "$found_pid" = "$pid" ] || continue
-    comm=$found_path
-    [ -n "$comm" ] || comm=$found_name
-    comm=${comm//\\//}
-    case "$comm" in *.[Ee][Xx][Ee]) comm=${comm%.*} ;; esac
-    printf '%s\t%s\t%s\n' "$found_ppid" "$comm" "${found_cmd//\\//}"
-    return 0
-  done <<EOF
-$_FM_WIN32_TABLE
-EOF
-  return 1
+  [ -n "${_FM_WIN32_ROW[$1]+x}" ] || return 1
+  printf '%s\n' "${_FM_WIN32_ROW[$1]}"
+}
+
+# fm_win32_proc_fields without the command-substitution fork: assigns ppid,
+# comm, and args into the named caller variables through printf -v (dynamic
+# scope reaches the caller's locals), so ancestry climbs on hosts where every
+# spawn is expensive pay no process launch per hop. Same return contract.
+fm_win32_proc_get() {  # <pid> <ppid-var> <comm-var> <args-var>
+  fm_win32_proc_load || return 1
+  local _fmpg_row=${_FM_WIN32_ROW[$1]-}
+  [ -n "$_fmpg_row" ] || return 1
+  local _fmpg_ppid _fmpg_comm _fmpg_args
+  IFS=$'\t' read -r _fmpg_ppid _fmpg_comm _fmpg_args <<<"$_fmpg_row"
+  printf -v "$2" '%s' "$_fmpg_ppid"
+  printf -v "$3" '%s' "$_fmpg_comm"
+  printf -v "$4" '%s' "$_fmpg_args"
 }
 
 # Print "<pid>\t<effective-ppid>" for every row of the cached table, the shape
@@ -156,32 +175,40 @@ fm_win32_proc_own_pid() {
 # A <pid> `ps -l` cannot read is taken as a Win32 pid already - the shape
 # descent walks hand over when their own pairs listing came from the table.
 fm_win32_ancestor_winpids() {  # [<pid>]
-  local cygpid=${1:-$$} winpid= ppid= line pid hops=0
+  local cygpid=${1:-$$} seed hops last line
+  # Both climbs run without a process launch per hop - the shape a per-hop
+  # `ps -l -p`/fields substitution chain cannot afford on hosts where every
+  # spawn is slow. The Cygwin table loads once and awk resolves the whole
+  # Cygwin-space chain in one pass; its first printed line is the climb count,
+  # the shared 16-hop budget the Win32 section then continues under from the
+  # row index.
+  seed=$(ps -l 2>/dev/null | awk -v start="$cygpid" '
+    NR > 1 && $4 ~ /^[0-9]+$/ { p[$1] = $2; w[$1] = $4 }
+    END {
+      if (!(start in w)) { print "0\n" start; exit }
+      c = start; n = 0; out = ""
+      while (n < 16 && (c in w)) {
+        out = out w[c] "\n"
+        if (!(p[c] ~ /^[0-9]+$/) || p[c]+0 <= 1 || p[c] == c) break
+        c = p[c]; n++
+      }
+      printf "%d\n%s", n, out
+    }')
+  case $seed in *$'\n'*) ;; *) return 0 ;; esac
+  hops=${seed%%$'\n'*}
+  case $hops in ''|*[!0-9]*) return 0 ;; esac
+  seed=${seed#*$'\n'}
+  printf '%s\n' "$seed"
+  last=${seed##*$'\n'}
+  fm_win32_proc_load || return 0
   while [ "$hops" -lt 16 ]; do
-    line=$(ps -l -p "$cygpid" 2>/dev/null | awk 'NR==2 {print $2, $4}') || break
-    set -- $line
-    ppid=${1:-} winpid=${2:-}
-    case "$winpid" in ''|*[!0-9]*) break ;; esac
-    printf '%s\n' "$winpid"
-    case "$ppid" in ''|*[!0-9]*) break ;; esac
-    [ "$ppid" -gt 1 ] || break
-    [ "$ppid" != "$cygpid" ] || break
-    cygpid=$ppid
-    hops=$((hops + 1))
-  done
-  case "$winpid" in ''|*[!0-9]*)
-    winpid=$cygpid
-    printf '%s\n' "$winpid"
-    ;;
-  esac
-  pid=$winpid
-  while [ "$hops" -lt 16 ]; do
-    line=$(fm_win32_proc_fields "$pid") || break
-    ppid=${line%%$'\t'*}
-    case "$ppid" in ''|*[!0-9]*) break ;; esac
-    [ "$ppid" != "$pid" ] || break
-    printf '%s\n' "$ppid"
-    pid=$ppid
+    line=${_FM_WIN32_ROW[$last]:-}
+    [ -n "$line" ] || break
+    line=${line%%$'\t'*}
+    case "$line" in ''|*[!0-9]*) break ;; esac
+    [ "$line" != "$last" ] || break
+    printf '%s\n' "$line"
+    last=$line
     hops=$((hops + 1))
   done
 }

@@ -50,6 +50,28 @@ write_win32_only_ps() {  # <fakebin>
 #!/usr/bin/env bash
 set -u
 case "$*" in
+  -l)
+    # The lib reads the whole Cygwin table in one `ps -l` inside a command
+    # substitution, so $PPID here is that substitution's subshell, not the
+    # script pid awk walks from. Print a row per ancestor of the subshell so
+    # the caller's own cygpid is covered wherever it sits.
+    printf '      PID    PPID    PGID     WINPID   TTY         UID    STIME COMMAND\n'
+    cyg=$PPID
+    for _ in 1 2 3 4; do
+      case "$cyg" in ''|*[!0-9]*) break ;; esac
+      printf '   %s       1    %s    %s  ?         1000 00:00:00 bash\n' "$cyg" "$cyg" "${FM_TEST_OWN_WINPID:?}"
+      cyg=$(awk '{print $4}' "/proc/$cyg/stat" 2>/dev/null) \
+        || cyg=$(/bin/ps -o ppid= -p "$cyg" 2>/dev/null | tr -d ' ')
+    done
+    # Caller-declared extra Cygwin rows, "<cygpid> <cygppid> <winpid>" one per
+    # line, modelling table entries the caller chain does not contain - e.g. an
+    # explicit pid argument the walk must translate to a WINPID.
+    if [ -n "${FM_TEST_EXTRA_CYG_ROWS:-}" ]; then
+      printf '%s\n' "$FM_TEST_EXTRA_CYG_ROWS" | while read -r xpid xppid xwin; do
+        printf '   %s       %s    %s    %s  ?         1000 00:00:00 bash\n' "$xpid" "$xppid" "$xpid" "$xwin"
+      done
+    fi
+    ;;
   -l\ -p\ *)
     printf '      PID    PPID    PGID     WINPID   TTY         UID    STIME COMMAND\n'
     printf '   1234       1    1234    %s  ?         1000 00:00:00 bash\n' "${FM_TEST_OWN_WINPID:?}"
@@ -142,9 +164,9 @@ test_devin_win32_ancestry_detects() {
     || fail "the Win32 ancestry walk printed '$out', expected 'comm devin'"
 
   # An explicit Cygwin pid is translated through ps -l before the table walk:
-  # the stub reports every -l -p as WINPID=500, so asking for pid 9999 only
-  # resolves when the translation ran.
-  out=$(FM_TEST_OWN_WINPID=500 FM_TEST_WIN32_TABLE="$(devin_table)" \
+  # the stub's table carries cygpid 9999 mapped to WINPID=500, so asking for
+  # pid 9999 only resolves when the translation ran.
+  out=$(FM_TEST_OWN_WINPID=500 FM_TEST_EXTRA_CYG_ROWS='9999 1 500' FM_TEST_WIN32_TABLE="$(devin_table)" \
     PATH="$fakebin:$PATH" "$HARNESS" ancestry 9999)
   [ "$out" = "comm devin" ] \
     || fail "an explicit pid was not translated into the Win32 table walk, got '$out'"
