@@ -420,6 +420,15 @@ test_same_session_id_owns_a_recycled_background_chain() {
   fi
   printf 'S1\n' > "$dir/elsewhere"
   ln -s "$dir/elsewhere" "$state/.lock-session"
+  # Git Bash without Developer Mode turns ln -s into a silent file copy, which
+  # leaves no link shape to reject; MSYS=winsymlinks:lnk makes the same call
+  # produce a real shortcut symlink on any Cygwin/MSYS host, privilege-free.
+  if [ ! -L "$state/.lock-session" ]; then
+    rm -f "$state/.lock-session"
+    MSYS=winsymlinks:lnk ln -s "$dir/elsewhere" "$state/.lock-session"
+  fi
+  [ -L "$state/.lock-session" ] \
+    || fail "the fixture could not create a symlinked sidecar on this host"
   if FM_TEST_SESSION_ID=S1 FM_TEST_CLAUDE_PID=710 owned "$fakebin" "$state"; then
     fail "a symlinked sidecar was trusted"
   fi
@@ -576,6 +585,74 @@ SH
   [ "$got" = 900 ] || fail "a successful POSIX walk returned '$got' instead of its own answer 900"
   [ ! -e "$marker" ] || fail "the Win32 fallback ran powershell.exe even though the POSIX walk already succeeded"
   pass "session-lock: a successful POSIX ancestry walk never consults the Win32 fallback"
+}
+
+# --- unit layer: devin harness identity ---------------------------------------
+#
+# devin.exe is the Devin CLI; the Electron desktop app is Devin.exe (capital
+# D), so the match is anchored and case-sensitive. devin deliberately stays
+# out of FM_HARNESS_NAMES: the CLI has no version-named install, so
+# path-component evidence would only risk claiming an ordinary process whose
+# path happens to contain a `devin` directory.
+
+test_devin_process_matches_basename_and_win32_comm() {
+  local fakebin
+  fakebin=$(fm_fakebin "$TMP_ROOT/devin-match")
+  # fm_harness_process_matches is the single predicate every walk consults:
+  # the bare CLI name must match, and so must the normalized ExecutablePath
+  # the Win32 table hands over (forward slashes, .exe already dropped).
+  lib_eval "$fakebin" 'fm_harness_process_matches devin "devin -- serve"' \
+    || fail "a bare devin command name was not recognized"
+  lib_eval "$fakebin" 'fm_harness_process_matches "C:/Users/Admin/AppData/Local/devin/cli/bin/devin" "devin"' \
+    || fail "the win32-shaped devin path was not recognized"
+  pass "session-lock: devin is recognized by basename and win32-shaped path"
+}
+
+test_devin_excludes_the_electron_app_and_substrings() {
+  local fakebin shape
+  fakebin=$(fm_fakebin "$TMP_ROOT/devin-negative")
+  # Devin.exe (capital D) is the Electron desktop app, not the CLI harness;
+  # substring shapes must never be claimed either.
+  for shape in Devin devinfoo mydevin devin-helper; do
+    if lib_eval "$fakebin" "fm_harness_process_matches $shape $shape"; then
+      fail "$shape was claimed as the devin harness"
+    fi
+  done
+  # An ordinary path merely containing a lowercase devin directory must not
+  # match either - the CLI has no version-named install, so devin stays out
+  # of path-component matching entirely.
+  if lib_eval "$fakebin" 'fm_harness_process_matches /home/u/devin/tool.sh /home/u/devin/tool.sh'; then
+    fail "a script inside a devin directory was claimed as the harness"
+  fi
+  pass "session-lock: the Electron app, substrings, and devin directories are never the harness"
+}
+
+test_devin_win32_ancestry_anchors_on_the_cli_root() {
+  local dir fakebin got table
+  dir="$TMP_ROOT/devin-win32"
+  fakebin=$(fm_fakebin "$dir")
+  mkdir -p "$dir/state"
+  write_win32_fallback_ps "$fakebin"
+  write_win32_fallback_powershell "$fakebin"
+  # The verified shape: tool shell (bash, this process's own WINPID) ->
+  # devin.exe (CLI frontend, the anchor) -> devin.exe (CLI root) -> a
+  # non-harness ancestor the walk must stop at. Like every non-Claude harness
+  # the lock anchors on the innermost match - the pi-signed precedent, where
+  # the engine pid below its wrapper owns the session.
+  table=$(printf '%s\t%s\t%s\t%s\t%s\n' \
+    500 600 bash.exe 'C:\Program Files\Git\bin\bash.exe' 'bash.exe -c foo' \
+    600 610 devin.exe 'C:\Users\Admin\AppData\Local\devin\cli\bin\devin.exe' 'devin.exe -- serve' \
+    610 710 devin.exe 'C:\Users\Admin\AppData\Local\devin\cli\bin\devin.exe' 'devin.exe' \
+    710 0 explorer.exe 'C:\Windows\explorer.exe' explorer.exe)
+
+  got=$(FM_TEST_OWN_WINPID=500 FM_TEST_WIN32_TABLE="$table" lib_eval_win32 "$fakebin" 'fm_harness_ancestry_pid') \
+    || fail "the Win32 fallback did not resolve a devin ancestry pid"
+  [ "$got" = 600 ] || fail "the devin anchor resolved to '$got', expected the innermost devin.exe (600)"
+
+  printf '600\n' > "$dir/state/.lock"
+  FM_TEST_OWN_WINPID=500 FM_TEST_WIN32_TABLE="$table" lib_eval_win32 "$fakebin" "fm_session_lock_owned_by_self '$dir/state'" \
+    || fail "a lock recorded on the devin CLI frontend was not recognized as this session's own"
+  pass "session-lock: a devin ancestry anchors the lock on the innermost devin.exe"
 }
 
 # --- end-to-end layer: the real Stop auto-arm in real process trees ----------
@@ -1252,6 +1329,9 @@ test_anchor_pid_is_the_model_loop_process_only_for_a_trusted_id
 test_win32_fallback_finds_harness_when_posix_ps_cannot
 test_win32_fallback_pid_alive
 test_posix_success_never_consults_win32_fallback
+test_devin_process_matches_basename_and_win32_comm
+test_devin_excludes_the_electron_app_and_substrings
+test_devin_win32_ancestry_anchors_on_the_cli_root
 test_e2e_version_named_session_claims_the_home
 test_e2e_daemon_parented_session_claims_the_home
 test_e2e_daemon_parented_version_named_session_keeps_its_lock

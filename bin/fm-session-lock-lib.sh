@@ -23,13 +23,16 @@
 
 # Known harness command names; extend when a new adapter is verified. omp is
 # anchored exactly like pi: its process name is the bare word `omp` (verified,
-# omp 18.1.11), and a substring match would claim ompd or comp.
-FM_HARNESS_RE='claude|codex|opencode|grok|kimi|^pi$|^pi-signed$|^omp$'
+# omp 18.1.11), and a substring match would claim ompd or comp. devin is
+# anchored for the same reason plus case: the bare CLI is `devin`, while
+# `Devin.exe` is the Electron app and `devinfoo` must never match.
+FM_HARNESS_RE='claude|codex|opencode|grok|kimi|^pi$|^pi-signed$|^omp$|^devin$'
 
 # The same harnesses as exact executable names. Keep in sync with
 # FM_HARNESS_RE. Used only for the stricter path evidence below, where the
 # loose regex would also match ordinary firstmate paths such as
-# bin/fm-claude-stop-autoarm.sh.
+# bin/fm-claude-stop-autoarm.sh. devin stays out deliberately: the CLI has no
+# version-named install, so a lowercase `devin` path component is ordinary.
 FM_HARNESS_NAMES=(claude codex opencode grok kimi pi-signed pi omp)
 
 # Print the exact harness name carried by executable path $1 - its own basename
