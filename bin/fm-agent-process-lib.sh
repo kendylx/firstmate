@@ -46,6 +46,12 @@ fm_agent_process_classify_name() {  # <path> [argv0] -> agent|shell|other
     # single binary, comm=agy with argv[0]=agy), and a glob would claim
     # unrelated commands containing that fragment.
     agy) printf 'agent' ;;
+    # devin (Devin CLI) is anchored for the same reason: its live process name
+    # is the bare word `devin` (verified, devin 3000.11.1: devin.exe shows as
+    # comm devin.exe on Windows after .exe normalization), while Devin.exe with
+    # a capital D is the Electron desktop app and a glob would claim devinfoo,
+    # mydevin, or devin-helper. Case-sensitive exact match only.
+    devin) printf 'agent' ;;
     zsh|bash|sh|dash|ash|ksh|mksh|tcsh|csh|fish) printf 'shell' ;;
     *)
       if fm_harness_path_name "$path" >/dev/null || fm_harness_path_name "$argv0" >/dev/null; then

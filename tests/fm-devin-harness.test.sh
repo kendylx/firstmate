@@ -181,9 +181,58 @@ SH
   pass "fm-harness.sh: no Win32 table fails closed to unknown"
 }
 
+test_devin_classification_and_control_rows() {
+  # shellcheck source=bin/fm-agent-process-lib.sh
+  . "$ROOT/bin/fm-agent-process-lib.sh"
+  # shellcheck source=bin/fm-control-lib.sh
+  . "$ROOT/bin/fm-control-lib.sh"
+
+  # Process-name classification is anchored and case-sensitive, the same shape
+  # as agy and omp: devin.exe is the CLI, Devin.exe the Electron app, and no
+  # substring or suffix is ever the harness.
+  [ "$(fm_agent_process_classify_name devin)" = agent ] \
+    || fail "devin must classify as an agent process"
+  [ "$(fm_agent_process_classify_name 'C:/Users/Admin/AppData/Local/devin/cli/bin/devin')" = agent ] \
+    || fail "a devin install path must classify as an agent process"
+  [ "$(fm_agent_process_classify_name Devin)" != agent ] \
+    || fail "the Electron desktop app must never classify as the CLI"
+  [ "$(fm_agent_process_classify_name devinfoo)" != agent ] \
+    || fail "devinfoo must not classify as an agent"
+  [ "$(fm_agent_process_classify_name mydevin)" != agent ] \
+    || fail "mydevin must not classify as an agent"
+  [ "$(fm_agent_process_classify_name devin-helper)" != agent ] \
+    || fail "devin-helper must not classify as an agent"
+
+  # Control-plane rows, every value from data/devin-harness/repl-facts.md.
+  fm_control_harness_supported devin \
+    || fail "devin must be a verified control harness"
+  [ "$(fm_control_harness_family devin)" = devin ] \
+    || fail "devin must resolve to its own adapter family"
+  fm_control_harness_family devin-helper \
+    && fail "devin-helper must not be guessed into the devin adapter"
+  fm_control_harness_family Devin \
+    && fail "Devin must not be guessed into the devin adapter"
+  fm_control_harness_family devinfoo \
+    && fail "devinfoo must not be guessed into the devin adapter"
+  fm_control_harness_supports_kind devin secondmate \
+    || fail "devin must support the secondmate kind"
+  [ "$(fm_control_interrupt_key devin)" = Escape ] \
+    || fail "devin's interrupt key must be Escape"
+  [ "$(fm_control_interrupt_repeat devin)" = 2 ] \
+    || fail "devin's interrupt must be delivered twice back-to-back"
+  [ -z "$(fm_control_interrupt_clear_key devin)" ] \
+    || fail "devin's interrupt needs no clear key - no repollution was observed"
+  [ "$(fm_control_interrupt_ack_source devin)" = none ] \
+    || fail "devin's interrupt ack source must be none"
+  [ "$(fm_control_exit_command devin)" = /quit ] \
+    || fail "devin's exit command must be /quit"
+  pass "devin: process classification and control rows match the probed adapter mechanics"
+}
+
 test_devin_detected_by_native_comm
 test_devin_rejects_electron_and_substrings
 test_devin_comm_beats_inherited_claude_marker
 test_devin_win32_ancestry_detects
 test_devin_win32_ancestry_descent
 test_devin_win32_no_table_fails_closed
+test_devin_classification_and_control_rows
