@@ -160,6 +160,29 @@ test_cross_harness_ordinary_continuation_and_repair_matrix() {
   pass "renderer preserves every harness ordinary-continuation and missing-cycle repair path"
 }
 
+test_devin_foreground_checkpoint() {
+  local out ordinary
+  out=$("$RENDER" --harness devin)
+  assert_contains "$out" "SUPERVISION OPERATING INSTRUCTIONS - primary harness: devin" "devin heading missing"
+  assert_contains "$out" "Mode: Devin foreground checkpoint." "devin snippet missing"
+  assert_contains "$out" "bin/fm-watch-checkpoint.sh" "devin checkpoint helper missing"
+  assert_not_contains "$out" "Mode: Unknown harness fallback." "devin fell back to the unknown snippet"
+  assert_not_contains "$out" "Mode: Codex foreground checkpoint." "renderer printed the codex snippet for devin"
+  ordinary=$(printf '%s\n' "$out" | grep -F -- '- Ordinary wake:')
+  assert_contains "$ordinary" "next foreground" "devin ordinary-wake line lost its foreground checkpoint"
+  assert_contains "$ordinary" "bin/fm-watch-checkpoint.sh" "devin ordinary-wake line lost the checkpoint command"
+  assert_not_contains "$ordinary" "bin/fm-watch-arm.sh" "devin ordinary-wake line incorrectly uses a background arm"
+  out=$("$RENDER" --harness devin --repair-line)
+  assert_contains "$out" "foreground checkpoint" "devin recovery line lost its checkpoint repair"
+  assert_contains "$out" "bin/fm-watch-checkpoint.sh --seconds 180" "devin recovery line lost the default checkpoint seconds"
+  local home
+  home="$TMP_ROOT/devin-home"
+  mkdir -p "$home/state" "$home/config"
+  out=$(FM_HOME="$home" FM_DEVIN_WATCH_CHECKPOINT=7 "$RENDER" --harness devin --repair-line)
+  assert_contains "$out" "bin/fm-watch-checkpoint.sh --seconds 7" "devin repair line did not honor its checkpoint env override"
+  pass "devin renders the foreground-checkpoint supervision protocol"
+}
+
 test_pi_signed_preserves_identity_with_pi_supervision_protocol() {
   local out ordinary
   out=$("$RENDER" --harness pi-signed)
@@ -224,6 +247,7 @@ test_conditional_stanzas
 test_quiet_mode_stanzas
 test_repair_lines
 test_cross_harness_ordinary_continuation_and_repair_matrix
+test_devin_foreground_checkpoint
 test_pi_signed_preserves_identity_with_pi_supervision_protocol
 test_grok_is_background_notify
 test_grok_command_sources_effective_config
