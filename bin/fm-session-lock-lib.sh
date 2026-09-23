@@ -109,29 +109,24 @@ fm_harness_process_matches() {  # <comm> <args>
 . "$(dirname -- "${BASH_SOURCE[0]}")/fm-win32-proc-lib.sh"
 
 # fm_harness_ancestry_pids's algorithm, replayed against the real Win32 parent
-# chain instead of Cygwin's ppid=1 dead end. Kept as a literal parallel of that
-# function, rather than a shared loop, so each stays readable against the
-# process-table shape it actually reads.
+# chain instead of Cygwin's ppid=1 dead end. The ordered ancestor list already
+# bridges the Cygwin fork-stub gap and the Cygwin/Win32 pid spaces, so this
+# walk only applies the contiguous-run rule per hop.
 _fm_harness_ancestry_pids_win32() {
-  local pid ppid comm args extending=0 printed=0 line
-  pid=$(fm_win32_proc_own_pid) || return 1
-  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
-  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
-    line=$(fm_win32_proc_fields "$pid") || break
+  local winpid ppid comm args extending=0 printed=0 line
+  for winpid in $(fm_win32_ancestor_winpids); do
+    line=$(fm_win32_proc_fields "$winpid") || break
     IFS=$'\t' read -r ppid comm args <<EOF
 $line
 EOF
     if fm_harness_process_matches "$comm" "$args"; then
-      printf '%s\n' "$pid"
+      printf '%s\n' "$winpid"
       printed=1
       [ "$FM_HARNESS_IS_CLAUDE" -eq 1 ] || break
       extending=1
     elif [ "$extending" -eq 1 ]; then
       break
     fi
-    case "$ppid" in ''|*[!0-9]*) break ;; esac
-    [ "$ppid" != "$pid" ] || break
-    pid=$ppid
   done
   [ "$printed" -eq 1 ]
 }

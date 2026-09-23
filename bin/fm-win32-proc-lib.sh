@@ -90,15 +90,37 @@ EOF
   return 1
 }
 
-# Print "<pid>\t<ppid>" for every row of the cached table, the shape a
-# top-down descent walk (matching children against an eligible leaf set)
-# consumes instead of climbing hop by hop.
+# Print "<pid>\t<effective-ppid>" for every row of the cached table, the shape
+# a top-down descent walk (matching children against an eligible leaf set)
+# consumes instead of climbing hop by hop. A Cygwin-tracked row's raw
+# ParentProcessId names a fork stub that has already exited - the same gap
+# fm_win32_ancestor_winpids bridges upward - so each such row's parent is
+# resolved through Cygwin's own ps -l table (its cygwin ppid translated to
+# that row's WINPID). Rows Cygwin does not track keep their recorded Win32
+# parent: a native child spawned by a native parent is created directly, so
+# that edge is real.
 fm_win32_proc_pairs() {
-  local found_pid found_ppid rest
+  local cygwin_rows
   fm_win32_proc_load || return 1
-  while IFS=$'\t' read -r found_pid found_ppid rest; do
-    printf '%s\t%s\n' "$found_pid" "$found_ppid"
-  done <<EOF
+  # cygpid cygppid winpid per Cygwin-tracked process; a broken ps leaves this
+  # empty and every row keeps its recorded parent, identical to the old shape.
+  cygwin_rows=$(ps -l 2>/dev/null | awk 'NR>1 && $4 ~ /^[0-9]+$/ {print $1, $2, $4}')
+  awk -v cyg="$cygwin_rows" '
+    BEGIN {
+      n = split(cyg, rows, "\n")
+      for (i = 1; i <= n; i++) {
+        split(rows[i], f, " ")
+        cygppid[f[1]] = f[2]; winof[f[1]] = f[3]; cygof[f[3]] = f[1]
+      }
+      FS = "\t"
+    }
+    {
+      ppid = $2
+      if (($1 in cygof) && (cygof[$1] in cygppid) && (cygppid[cygof[$1]] in winof))
+        ppid = winof[cygppid[cygof[$1]]]
+      printf "%s\t%s\n", $1, ppid
+    }
+  ' <<EOF
 $_FM_WIN32_TABLE
 EOF
 }
@@ -117,4 +139,49 @@ fm_win32_pid_alive() {  # <pid>
 # without the unsupported -o fields.
 fm_win32_proc_own_pid() {
   ps -l -p "$$" 2>/dev/null | awk 'NR==2 {print $4}'
+}
+
+# Print the ancestor Win32 pids of <pid> (or this process), nearest first, one
+# per line - the seed every upward ancestry walk on this platform consumes.
+#
+# The list bridges the two pid spaces a walk crosses on Git Bash/MSYS. The
+# Cygwin section follows `ps -l`'s Cygwin-space ppid column and translates
+# each hop to its WINPID; it must come first because a Cygwin child's real
+# Win32 ParentProcessId names a fork STUB that has already exited, so a
+# pure-Win32 climb dead-ends one hop up (verified: fields lookups on the stub
+# miss the whole table). Once the Cygwin chain stops resolving - a native
+# Windows parent, or Cygwin's ppid=1 dead end - the walk continues from the
+# last known WINPID through Win32_Process ParentProcessId links, which are
+# creation-time records that hold for natively spawned children.
+# A <pid> `ps -l` cannot read is taken as a Win32 pid already - the shape
+# descent walks hand over when their own pairs listing came from the table.
+fm_win32_ancestor_winpids() {  # [<pid>]
+  local cygpid=${1:-$$} winpid= ppid= line pid hops=0
+  while [ "$hops" -lt 16 ]; do
+    line=$(ps -l -p "$cygpid" 2>/dev/null | awk 'NR==2 {print $2, $4}') || break
+    set -- $line
+    ppid=${1:-} winpid=${2:-}
+    case "$winpid" in ''|*[!0-9]*) break ;; esac
+    printf '%s\n' "$winpid"
+    case "$ppid" in ''|*[!0-9]*) break ;; esac
+    [ "$ppid" -gt 1 ] || break
+    [ "$ppid" != "$cygpid" ] || break
+    cygpid=$ppid
+    hops=$((hops + 1))
+  done
+  case "$winpid" in ''|*[!0-9]*)
+    winpid=$cygpid
+    printf '%s\n' "$winpid"
+    ;;
+  esac
+  pid=$winpid
+  while [ "$hops" -lt 16 ]; do
+    line=$(fm_win32_proc_fields "$pid") || break
+    ppid=${line%%$'\t'*}
+    case "$ppid" in ''|*[!0-9]*) break ;; esac
+    [ "$ppid" != "$pid" ] || break
+    printf '%s\n' "$ppid"
+    pid=$ppid
+    hops=$((hops + 1))
+  done
 }
