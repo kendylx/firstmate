@@ -149,7 +149,7 @@
 #   profile consultation. A --secondmate spawn is exempt and resolves the SECONDMATE
 #   harness (config/secondmate-harness -> config/crew-harness -> own), so the
 #   secondmate-vs-crewmate split is DURABLE across every respawn (recovery,
-#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp|agy)
+#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp|agy|devin)
 #   overrides it for this spawn (either kind). A non-flag string containing
 #   whitespace is treated as a RAW launch command - the escape hatch for verifying
 #   new adapters. For pi and pi-signed, fm-spawn resolves the selected executable
@@ -310,6 +310,7 @@
 #     __GEMINISETTINGS__ firstmate-owned per-task gemini settings file (busy-state hooks)
 #     __ROVOBIN__   resolved, rovo-verified executable for a rovo launch
 #     __AGYBIN__    resolved, agy-verified executable for an agy launch
+#     __DEVINBIN__  resolved, devin-verified executable for a devin launch
 # Verified per-harness turn-end hooks are installed automatically where enabled; some live outside the worktree.
 # Kimi uses one surgically installed Firstmate region in $HOME/.kimi-code/config.toml,
 # a firstmate-owned global hook and registry, and a gitignored per-task pointer.
@@ -841,7 +842,7 @@ spawn_remote_secondmate() {
     harness=$("$FM_ROOT/bin/fm-harness.sh" secondmate)
   fi
   case "$harness" in
-  claude | codex | opencode | pi | pi-signed | grok | kimi | cursor) ;;
+  claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | devin) ;;
   *)
     fm_lock_release "$registry_lock" || true
     fm_lock_release "$SPAWN_TASK_LOCK" || true
@@ -1700,7 +1701,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
   }
 elif [ "$KIND" = secondmate ]; then
   case "${POS[1]:-}" in
-  '' | claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy)
+  '' | claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy | devin)
     ARG3=${POS[1]:-}
     ;;
   *' '*)
@@ -2055,6 +2056,27 @@ launch_template() {
   # when a supported effort is requested, since a second --config-override
   # would silently discard the first (confirmed live).
   rovo) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS __ROVOBIN__ run --yolo __MODELFLAG____ROVOCONFIGOVERRIDE__' ;;
+  # devin (Devin CLI): the brief rides the launch command behind the `--`
+  # prompt boundary, which auto-submits it as turn one and returns the REPL
+  # to its idle composer (verified live, devin 3000.11.1).
+  # --respect-workspace-trust false suppresses the blocking
+  # `1 Yes, trust / 2 No, exit` picker every fresh worktree path would
+  # otherwise park on - the flag alone is the trust handling; nothing is
+  # written into the operator's trusted_workspaces store.
+  # --permission-mode dangerous is the bypass tier an unattended crewmate
+  # needs; the status bar confirms it as `(bypass permissions on)`.
+  # The binary is resolved rather than named because the CLI lives at
+  # %LOCALAPPDATA%\devin\cli\bin\devin.exe and MSYS PATH drift can drop it,
+  # and the foreign primary markers are cleared for the same reason cursor
+  # clears them: devin publishes no marker of its own, so an inherited
+  # CLAUDECODE must not read a devin worker as its launcher.
+  # devin exposes no reasoning-effort flag (checked against 3000.11.1
+  # --help), so the shared effort axis is deliberately omitted and stays in
+  # task metadata only. Its busy contract is the rendered
+  # `esc twice to interrupt` / `Guide Devin while it works` signature
+  # through fm_busy_classify, and its readiness gate below requires the
+  # busy signature before the spawn reports success.
+  devin) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS __DEVINBIN__ --respect-workspace-trust false --permission-mode dangerous __MODELFLAG__-- "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   *) return 1 ;;
   esac
 }
@@ -2175,6 +2197,12 @@ omp)
 agy)
   AGY_BIN=$(resolve_pi_executable agy) || {
     echo "error: agy executable not found on PATH; install Antigravity CLI or select a different verified harness" >&2
+    exit 1
+  }
+  ;;
+devin)
+  DEVIN_BIN=$(resolve_pi_executable devin) || {
+    echo "error: devin executable not found on PATH; install Devin CLI or select a different verified harness" >&2
     exit 1
   }
   ;;
@@ -2337,7 +2365,7 @@ model_flag_for_harness() {
   local harness=$1 model=$2
   [ -n "$model" ] && [ "$model" != default ] || return 0
   case "$harness" in
-  claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy)
+  claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy | devin)
     printf -- '--model %s ' "$(shell_quote "$model")"
     ;;
   esac
@@ -2423,7 +2451,8 @@ effort_flag_for_harness() {
     # launch flag and mapping have not been live-verified; the requested axis
     # stays in task metadata but never reaches the launch command. Cursor encodes
     # effort in model ids such as cursor-grok-4.5-high, so it also receives no
-    # separate effort flag.
+    # separate effort flag. devin exposes no effort flag at all (checked against
+    # 3000.11.1 --help), so the axis likewise stays in task metadata only.
   esac
 }
 
@@ -3806,6 +3835,44 @@ agy_spawn_fail() {  # <detail>
   rovo_endpoint_cleanup
 }
 
+# devin carries its brief on the launch command behind the `--` prompt
+# boundary, which auto-submits it as turn one, so it needs no delivery gate.
+# --respect-workspace-trust false suppresses the workspace-trust picker
+# outright (verified live, devin 3000.11.1), so no dialog-answer arm exists
+# here either. What remains is agy's last half: the spawn is not a success
+# until the pane shows the busy signature the supervisor reads - the
+# `esc twice to interrupt` status row or the `Guide Devin while it works`
+# busy composer through fm_busy_classify. That verdict is deliberately the
+# same one the watcher uses later, so a spawn cannot pass on evidence the
+# steady-state path would not accept.
+devin_capture() {
+  fm_backend_capture "$BACKEND" "$T" 120 "$W" 2>/dev/null || true
+}
+
+devin_pane_is_working() {  # <plain-pane-capture>
+  case "$(fm_busy_classify "$BACKEND" "$T" devin "$ID" "$STATE" "$1")" in
+    busy*) return 0 ;;
+  esac
+  return 1
+}
+
+devin_wait_for_working() {
+  local pane i=0 max=${FM_DEVIN_READY_POLLS:-60} interval=${FM_DEVIN_POLL_INTERVAL:-0.5}
+  while [ "$i" -lt "$max" ]; do
+    pane=$(devin_capture)
+    devin_pane_is_working "$pane" && return 0
+    i=$((i + 1))
+    [ "$i" -ge "$max" ] || sleep "$interval"
+  done
+  return 1
+}
+
+devin_spawn_fail() {  # <detail>
+  printf '%s\n' "$(status_stamp_line "failed: $1")" >>"$STATE/$ID.status"
+  echo "error: $1; inspect window $T" >&2
+  rovo_endpoint_cleanup
+}
+
 if [ "$RELAUNCH" -eq 1 ]; then
   # No worktree is acquired: the recorded one is reused as-is. What must be
   # proven instead is that the adopted endpoint's shell is actually sitting in
@@ -4631,10 +4698,11 @@ cursor) LAUNCH=${LAUNCH//__CURSORBIN__/"$(shell_quote "$CURSOR_BIN")"} ;;
 gemini) LAUNCH=${LAUNCH//__GEMINISETTINGS__/"$(shell_quote "$STATE_REAL/$ID.gemini-settings.json")"} ;;
 omp) LAUNCH=${LAUNCH//__OMPBIN__/"$(shell_quote "$OMP_BIN")"} ;;
 agy) LAUNCH=${LAUNCH//__AGYBIN__/"$(shell_quote "$AGY_BIN")"} ;;
+devin) LAUNCH=${LAUNCH//__DEVINBIN__/"$(shell_quote "$DEVIN_BIN")"} ;;
 esac
 LAUNCH=${LAUNCH//__WORKTREE__/$sq_worktree}
 case "$HARNESS" in
-claude | codex | opencode | pi | pi-signed | grok | kimi | gemini | muse | rovo | agy)
+claude | codex | opencode | pi | pi-signed | grok | kimi | gemini | muse | rovo | agy | devin)
   LAUNCH="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI $LAUNCH"
   ;;
 esac
@@ -4898,6 +4966,12 @@ if [ "$HARNESS" = agy ]; then
     else
       agy_spawn_fail "agy never showed its folder-trust dialog on an unregistered worktree in window $T, so the brief could not be confirmed to run there"
     fi
+    exit 1
+  fi
+fi
+if [ "$HARNESS" = devin ]; then
+  if ! devin_wait_for_working; then
+    devin_spawn_fail "devin did not show its busy signature in window $T after the brief was submitted"
     exit 1
   fi
 fi

@@ -229,6 +229,101 @@ test_devin_classification_and_control_rows() {
   pass "devin: process classification and control rows match the probed adapter mechanics"
 }
 
+# The recipe and flag helpers live inside bin/fm-spawn.sh's main body, so the
+# suite extracts the exact function text rather than duplicating it here.
+extract_spawn_fn() {  # <fn-name>
+  sed -n "/^$1() {/,/^}/p" "$ROOT/bin/fm-spawn.sh"
+}
+
+test_devin_launch_recipe_and_flags() {
+  local recipe
+  eval "$(extract_spawn_fn shell_quote)"
+  eval "$(extract_spawn_fn launch_template)"
+  eval "$(extract_spawn_fn model_flag_for_harness)"
+  eval "$(extract_spawn_fn effort_flag_for_harness)"
+
+  recipe=$(launch_template devin ship)
+  [ -n "$recipe" ] || fail "devin must resolve a launch template"
+  assert_contains "$recipe" 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS' \
+    "devin launch must clear foreign primary markers"
+  assert_contains "$recipe" '__DEVINBIN__' "devin launch must resolve its binary through a placeholder"
+  assert_contains "$recipe" '--respect-workspace-trust false' \
+    "devin launch must suppress the workspace-trust picker"
+  assert_contains "$recipe" '--permission-mode dangerous' \
+    "devin launch must request the bypass permission tier"
+  assert_contains "$recipe" '__MODELFLAG__' "devin launch must carry the model flag placeholder"
+  assert_contains "$recipe" '-- "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' \
+    "devin launch must pass the brief after the -- prompt boundary"
+
+  recipe=$(launch_template devin secondmate)
+  [ -n "$recipe" ] || fail "devin must resolve a secondmate launch template"
+  assert_contains "$recipe" '--permission-mode dangerous' \
+    "devin's secondmate launch lost the bypass permission tier"
+
+  [ "$(model_flag_for_harness devin some-model)" = "--model 'some-model' " ] \
+    || fail "model_flag_for_harness devin must emit --model '<id> '"
+  [ -z "$(effort_flag_for_harness devin high)" ] \
+    || fail "devin exposes no effort flag; the axis stays in task metadata only"
+  pass "devin: launch recipe carries trust suppression, dangerous mode, and the -- brief boundary"
+}
+
+test_devin_spawn_gates_accept() {
+  # The bare-adapter positional case (--secondmate <harness>) must name devin,
+  # and the remote-secondmate harness gates must accept it on both the parent
+  # spawn side and the host-local control side.
+  grep -F "'' | claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy | devin)" \
+    "$ROOT/bin/fm-spawn.sh" >/dev/null \
+    || fail "fm-spawn.sh's bare secondmate adapter list must accept devin"
+  grep -F "claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | devin) ;;" \
+    "$ROOT/bin/fm-spawn.sh" >/dev/null \
+    || fail "fm-spawn.sh's remote secondmate harness gate must accept devin"
+  grep -c 'claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|devin' \
+    "$ROOT/bin/fm-remote-secondmate-control.sh" | grep -qx 2 \
+    || fail "fm-remote-secondmate-control.sh must accept devin in both its launch and relaunch gates"
+
+  # Behavioral proof for the host-local gate: a seeded secondmate home reaches
+  # past the harness check for devin but not for an unverified name.
+  local home out
+  home="$TMP_ROOT/remote-home"
+  mkdir -p "$home/bin" "$home/state" "$home/data"
+  printf 'sm-gate\n' > "$home/.fm-secondmate-home"
+  : > "$home/AGENTS.md"
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-remote-secondmate-control.sh" \
+    launch sm-gate spaceship - - herdr 2>&1 || true)
+  assert_contains "$out" 'unverified remote secondmate harness' \
+    "an unverified name must still be refused by the remote gate"
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-remote-secondmate-control.sh" \
+    launch sm-gate devin - - herdr 2>&1 || true)
+  case "$out" in *'unverified remote secondmate harness'*)
+    fail "devin must not be refused as an unverified remote secondmate harness" ;;
+  esac
+  pass "devin: secondmate, remote-spawn, and remote-control gates all accept the adapter"
+}
+
+test_devin_busy_classification() {
+  # shellcheck source=bin/fm-busy-lib.sh
+  . "$ROOT/bin/fm-busy-lib.sh"
+  local state verdict
+  state="$TMP_ROOT/busy-state"
+  mkdir -p "$state"
+
+  verdict=$(fm_busy_classify tmux t1 devin t1 "$state" \
+    "$(printf 'output line\nThinking · 12s (esc twice to interrupt)\n❭ Guide Devin while it works\n')")
+  [ "$verdict" = 'busy devin-regex' ] \
+    || fail "the probed busy signature must classify busy, got '$verdict'"
+
+  verdict=$(fm_busy_classify tmux t1 devin t1 "$state" \
+    "$(printf 'output line\n❭ Ask Devin to build features, fix bugs, or work on your code\n')")
+  [ "$verdict" = 'idle devin-regex' ] \
+    || fail "the idle composer must classify idle, got '$verdict'"
+
+  verdict=$(fm_busy_classify tmux t1 devin t1 "$state" \
+    "$(printf 'unrelated output\n')")
+  [ "$verdict" = 'unknown devin-regex' ] \
+    || fail "a tail without either signature must classify unknown, got '$verdict'"
+  pass "devin: the probed pane signatures classify busy, idle, and unknown"
+}
+
 test_devin_detected_by_native_comm
 test_devin_rejects_electron_and_substrings
 test_devin_comm_beats_inherited_claude_marker
@@ -236,3 +331,6 @@ test_devin_win32_ancestry_detects
 test_devin_win32_ancestry_descent
 test_devin_win32_no_table_fails_closed
 test_devin_classification_and_control_rows
+test_devin_launch_recipe_and_flags
+test_devin_spawn_gates_accept
+test_devin_busy_classification
