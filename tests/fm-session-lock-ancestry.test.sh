@@ -48,6 +48,33 @@ lib_eval() {  # <fakebin> <expression>
     PATH="$fakebin:$PATH" bash -c "
     . \"\$0\"
     kill() { return \${FM_TEST_KILL_RC:-0}; }
+    # A suite run on a real Windows host must never let the library's Win32
+    # ancestry fallback (bin/fm-session-lock-lib.sh's _fm_win32_available)
+    # reach the machine's real PowerShell: every unit case here drives the
+    # library through a fake ps and must stay deterministic regardless of
+    # host OS. win32-fallback.test cases below replace these with their own
+    # fakebin/powershell.exe file, which PATH resolves ahead of this function.
+    powershell.exe() { return 1; }
+    powershell() { return 1; }
+    $expr
+  " "$LIB"
+}
+
+# Like lib_eval, but without the powershell.exe/powershell stubs above, so a
+# fakebin/powershell.exe FILE the caller wrote is what PATH resolves to (a
+# shell function always beats a PATH executable of the same name, which is
+# exactly why lib_eval defines one above and this variant does not). Used only
+# by the Win32-ancestry-fallback cases, which need a real, controllable
+# powershell.exe stub rather than a blanket refusal.
+lib_eval_win32() {  # <fakebin> <expression>
+  local fakebin=$1 expr=$2
+  local -a session_env=()
+  [ -z "${FM_TEST_SESSION_ID:-}" ] || session_env+=("CLAUDE_CODE_SESSION_ID=$FM_TEST_SESSION_ID")
+  [ -z "${FM_TEST_CLAUDE_PID:-}" ] || session_env+=("CLAUDE_PID=$FM_TEST_CLAUDE_PID")
+  env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_PID ${session_env[@]+"${session_env[@]}"} \
+    PATH="$fakebin:$PATH" bash -c "
+    . \"\$0\"
+    kill() { return \${FM_TEST_KILL_RC:-0}; }
     $expr
   " "$LIB"
 }
@@ -425,6 +452,130 @@ test_anchor_pid_is_the_model_loop_process_only_for_a_trusted_id() {
     || fail "no anchor pid was resolved for the healthy chain with a trusted id"
   [ "$got" = 710 ] || fail "the healthy chain with a trusted id anchored '$got', expected 710 rather than the front-end"
   pass "session-lock: a trusted id anchors the lock on the model-loop process, anything else on the outermost pid"
+}
+
+# --- unit layer: the Win32 ancestry fallback (Cygwin ps cannot see this) -----
+#
+# Reproduces the Git Bash/MSYS failure verified live: a Cygwin ps that errors
+# on every -o flag, so the ordinary walk finds nothing at all, and a real
+# Win32 parent chain that only PowerShell's Win32_Process can supply. The fake
+# ps below answers only -l -p (Cygwin's own WINPID-reporting flag combination)
+# and errors on -o exactly like the real one; the fake powershell.exe answers
+# with a caller-supplied table instead of touching the real process tree.
+
+write_win32_fallback_ps() {  # <fakebin>
+  cat > "$1/ps" <<'SH'
+#!/usr/bin/env bash
+set -u
+case "$*" in
+  -o\ *) echo "ps: unknown option -- o" >&2; exit 1 ;;
+  -l\ -p\ *)
+    printf '      PID    PPID    PGID     WINPID   TTY         UID    STIME COMMAND\n'
+    printf '   1234       1    1234    %s  ?         1000 00:00:00 bash\n' "${FM_TEST_OWN_WINPID:-999999}"
+    ;;
+  *) exit 1 ;;
+esac
+SH
+  chmod +x "$1/ps"
+}
+
+write_win32_fallback_powershell() {  # <fakebin> [<marker-file>]
+  local fakebin=$1 marker=${2:-}
+  cat > "$fakebin/powershell.exe" <<SH
+#!/usr/bin/env bash
+${marker:+printf '%s\n' 1 > "$marker"}
+printf '%s\n' "\$FM_TEST_WIN32_TABLE"
+SH
+  chmod +x "$fakebin/powershell.exe"
+}
+
+test_win32_fallback_finds_harness_when_posix_ps_cannot() {
+  local dir fakebin got table
+  dir="$TMP_ROOT/win32-ancestry"
+  fakebin=$(fm_fakebin "$dir")
+  mkdir -p "$dir/state"
+  write_win32_fallback_ps "$fakebin"
+  write_win32_fallback_powershell "$fakebin"
+  # 500 (bash, this process's own WINPID) -> 700 (claude.exe, the harness
+  # match) -> 710 (explorer.exe, a non-harness ancestor the walk must stop at).
+  # Built through one recycled printf format, never $(...) concatenation: each
+  # command substitution strips its own trailing newline, which would glue
+  # every row but the last onto the next with no separator at all.
+  table=$(printf '%s\t%s\t%s\t%s\t%s\n' \
+    500 700 bash.exe 'C:\Program Files\Git\bin\bash.exe' 'bash.exe -c foo' \
+    700 710 claude.exe 'C:\Users\u\claude.exe' 'claude.exe --resume' \
+    710 0 explorer.exe 'C:\Windows\explorer.exe' explorer.exe)
+
+  got=$(FM_TEST_OWN_WINPID=500 FM_TEST_WIN32_TABLE="$table" lib_eval_win32 "$fakebin" 'fm_harness_ancestry_pid') \
+    || fail "the Win32 fallback did not resolve an ancestry pid at all"
+  [ "$got" = 700 ] || fail "the Win32 fallback resolved '$got', expected the real Win32 parent claude.exe (700)"
+
+  printf '700\n' > "$dir/state/.lock"
+  FM_TEST_OWN_WINPID=500 FM_TEST_WIN32_TABLE="$table" lib_eval_win32 "$fakebin" "fm_session_lock_owned_by_self '$dir/state'" \
+    || fail "a lock recorded through the Win32 fallback was not recognized as this session's own"
+  pass "session-lock: the Win32 fallback finds the real harness ancestor when Cygwin ps cannot see -o at all"
+}
+
+test_win32_fallback_pid_alive() {
+  local dir fakebin table
+  dir="$TMP_ROOT/win32-alive"
+  fakebin=$(fm_fakebin "$dir")
+  write_win32_fallback_ps "$fakebin"
+  write_win32_fallback_powershell "$fakebin"
+  table=$(printf '%s\t%s\t%s\t%s\t%s' 700 710 claude.exe 'C:\Users\u\claude.exe' 'claude.exe --resume')
+
+  # kill -0 cannot address a bare Win32 pid under Cygwin (verified live:
+  # "No such process"), so FM_TEST_KILL_RC=1 reproduces that for every pid,
+  # forcing fm_harness_pid_alive past its POSIX branch and into this fallback.
+  FM_TEST_KILL_RC=1 FM_TEST_WIN32_TABLE="$table" lib_eval_win32 "$fakebin" 'fm_harness_pid_alive 700' \
+    || fail "a live Win32-only harness pid was not recognized once kill -0 could not address it"
+  if FM_TEST_KILL_RC=1 FM_TEST_WIN32_TABLE="$table" lib_eval_win32 "$fakebin" 'fm_harness_pid_alive 999'; then
+    fail "a pid absent from the Win32 table was treated as a live harness"
+  fi
+  pass "session-lock: the Win32 fallback answers pid liveness once kill -0 cannot address the pid"
+}
+
+test_posix_success_never_consults_win32_fallback() {
+  local dir fakebin marker got
+  dir="$TMP_ROOT/win32-not-consulted"
+  fakebin=$(fm_fakebin "$dir")
+  marker="$dir/powershell-was-called"
+  # The same contiguous-run fixture as test_harness_beyond_a_gap_never_owns_the_lock:
+  # a real -o-capable ps that resolves everything on its own.
+  cat > "$fakebin/ps" <<'SH'
+#!/usr/bin/env bash
+set -u
+field= pid=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) field=$2; shift 2 ;;
+    -p) pid=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+case "$pid:$field" in
+  900:comm=) printf '%s\n' claude ;;
+  900:args=) printf '%s\n' 'claude' ;;
+  900:ppid=) printf '%s\n' 910 ;;
+  910:comm=) printf '%s\n' bash ;;
+  910:args=) printf '%s\n' 'bash tests/run.sh' ;;
+  910:ppid=) printf '%s\n' 920 ;;
+  920:comm=) printf '%s\n' claude ;;
+  920:args=) printf '%s\n' 'claude' ;;
+  920:ppid=) printf '%s\n' 1 ;;
+  *:comm=) printf '%s\n' bash ;;
+  *:args=) printf '%s\n' bash ;;
+  *:ppid=) printf '%s\n' 900 ;;
+esac
+SH
+  chmod +x "$fakebin/ps"
+  write_win32_fallback_powershell "$fakebin" "$marker"
+
+  got=$(FM_TEST_WIN32_TABLE=$'999\t0\twrong.exe\tC:\\wrong.exe\twrong.exe' lib_eval_win32 "$fakebin" 'fm_harness_ancestry_pid') \
+    || fail "a successful POSIX walk stopped resolving once a powershell.exe stub existed on PATH"
+  [ "$got" = 900 ] || fail "a successful POSIX walk returned '$got' instead of its own answer 900"
+  [ ! -e "$marker" ] || fail "the Win32 fallback ran powershell.exe even though the POSIX walk already succeeded"
+  pass "session-lock: a successful POSIX ancestry walk never consults the Win32 fallback"
 }
 
 # --- end-to-end layer: the real Stop auto-arm in real process trees ----------
@@ -1098,6 +1249,9 @@ test_harness_beyond_a_gap_never_owns_the_lock
 test_competing_version_named_session_is_seen_as_live
 test_same_session_id_owns_a_recycled_background_chain
 test_anchor_pid_is_the_model_loop_process_only_for_a_trusted_id
+test_win32_fallback_finds_harness_when_posix_ps_cannot
+test_win32_fallback_pid_alive
+test_posix_success_never_consults_win32_fallback
 test_e2e_version_named_session_claims_the_home
 test_e2e_daemon_parented_session_claims_the_home
 test_e2e_daemon_parented_version_named_session_keeps_its_lock
