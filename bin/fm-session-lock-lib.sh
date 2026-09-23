@@ -96,93 +96,14 @@ fm_harness_process_matches() {  # <comm> <args>
 }
 
 # --- Windows-native ancestry fallback -----------------------------------------
-# Git Bash/MSYS ships a legacy Cygwin ps (verified: `ps (cygwin) 3.6.10`) whose
-# -p filter accepts none of the -o custom-format fields fm_harness_ancestry_pids
-# and fm_harness_pid_alive depend on, and neither that ps nor /proc can resolve
-# a process's real parent once the walk reaches a non-Cygwin ancestor (the
-# harness itself, a native Windows executable): Cygwin has no record of a
-# parent it did not itself fork, so it reports ppid=1 and the walk can never
-# leave the POSIX subsystem. Verified live: `ps -o comm= -p $$` errors
-# immediately ("unknown option -- o"), and even with that fixed, /proc/$$/ppid
-# and every native ancestor above it (claude.exe's own real parent) are both
-# unreachable through Cygwin's pid table - `ps -p` and `kill -0` refuse a bare
-# Win32 pid outright ("No such process") because Cygwin's -p filter only
-# matches pids it assigned itself.
-#
-# When that happens the only source left for the real parent chain is Windows
-# itself, queried once per process through Win32_Process via PowerShell - the
-# whole process table in one call (~200-400ms, verified), never per hop, so a
-# 16-hop climb costs one call rather than sixteen. Capability is detected by
-# trying, never by matching uname, matching the same rule fm_pid_identity in
-# fm-wake-lib.sh already applies to this exact platform gap: a Windows host
-# whose ps genuinely supports -o (a newer MSYS2 procps-ng) never pays this
-# cost, because the ordinary walk below already succeeds and this fallback is
-# only reached when it does not; a non-Windows host without PowerShell fails
-# the capability probe and pays nothing either.
-_FM_WIN32_TABLE=
-_FM_WIN32_TABLE_LOADED=0
-_FM_WIN32_UNAVAILABLE=0
-
-# True when a PowerShell binary capable of answering Win32_Process is on PATH.
-# Sticky: a failed probe or load is remembered so a missing or broken
-# PowerShell is asked at most once per process.
-_fm_win32_available() {
-  [ "$_FM_WIN32_UNAVAILABLE" -eq 0 ] || return 1
-  command -v powershell.exe >/dev/null 2>&1 && return 0
-  command -v powershell >/dev/null 2>&1 && return 0
-  _FM_WIN32_UNAVAILABLE=1
-  return 1
-}
-
-# Load and cache the whole Win32 process table (pid, ppid, name, execpath,
-# cmdline; tab-separated, CRLF stripped) in one PowerShell call.
-_fm_win32_load_table() {
-  [ "$_FM_WIN32_TABLE_LOADED" -eq 1 ] && return 0
-  _fm_win32_available || return 1
-  local bin=powershell.exe
-  command -v powershell.exe >/dev/null 2>&1 || bin=powershell
-  _FM_WIN32_TABLE=$("$bin" -NoProfile -NonInteractive -Command \
-    'Get-CimInstance Win32_Process | ForEach-Object { "{0}`t{1}`t{2}`t{3}`t{4}" -f $_.ProcessId,$_.ParentProcessId,$_.Name,$_.ExecutablePath,$_.CommandLine }' \
-    2>/dev/null | tr -d '\r')
-  if [ -z "$_FM_WIN32_TABLE" ]; then
-    _FM_WIN32_UNAVAILABLE=1
-    return 1
-  fi
-  _FM_WIN32_TABLE_LOADED=1
-  return 0
-}
-
-# Print "<ppid>\t<comm>\t<args>" for Win32 pid $1 from the cached table, or
-# return 1 when the pid is not present (process gone) or the table could not
-# be loaded. comm is ExecutablePath (Name when that is empty) with backslashes
-# turned to forward slashes and a trailing .exe dropped, so it lands in
-# exactly the shape fm_harness_process_matches already knows how to match -
-# including the anchored ^pi$/^omp$ alternatives, which a bare "pi.exe" would
-# otherwise miss.
-_fm_win32_lookup() {  # <pid>
-  local pid=$1 found_pid found_ppid found_name found_path found_cmd comm
-  _fm_win32_load_table || return 1
-  while IFS=$'\t' read -r found_pid found_ppid found_name found_path found_cmd; do
-    [ "$found_pid" = "$pid" ] || continue
-    comm=$found_path
-    [ -n "$comm" ] || comm=$found_name
-    comm=${comm//\\//}
-    case "$comm" in *.[Ee][Xx][Ee]) comm=${comm%.*} ;; esac
-    printf '%s\t%s\t%s\n' "$found_ppid" "$comm" "${found_cmd//\\//}"
-    return 0
-  done <<EOF
-$_FM_WIN32_TABLE
-EOF
-  return 1
-}
-
-# Print this process's own Win32 pid (WINPID), the id every Win32_Process row
-# is keyed by - distinct from $$, which is Cygwin's own internal pid. `ps -l`
-# is the one Cygwin ps flag combination (verified) that still reports it
-# without the unsupported -o fields.
-_fm_win32_own_pid() {
-  ps -l -p "$$" 2>/dev/null | awk 'NR==2 {print $4}'
-}
+# The Win32_Process table this block reads is owned by
+# bin/fm-win32-proc-lib.sh, shared by every ancestry walk that Cygwin ps
+# cannot serve (harness detection, the sessionstart nudge, the drain
+# legitimacy walk): the whole process table loads once per process through
+# PowerShell, capability detected by trying rather than uname, and the
+# rationale plus verified evidence live in that file's header.
+# shellcheck source=bin/fm-win32-proc-lib.sh
+. "$(dirname -- "${BASH_SOURCE[0]}")/fm-win32-proc-lib.sh"
 
 # fm_harness_ancestry_pids's algorithm, replayed against the real Win32 parent
 # chain instead of Cygwin's ppid=1 dead end. Kept as a literal parallel of that
@@ -190,10 +111,10 @@ _fm_win32_own_pid() {
 # process-table shape it actually reads.
 _fm_harness_ancestry_pids_win32() {
   local pid ppid comm args extending=0 printed=0 line
-  pid=$(_fm_win32_own_pid) || return 1
+  pid=$(fm_win32_proc_own_pid) || return 1
   case "$pid" in ''|*[!0-9]*) return 1 ;; esac
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
-    line=$(_fm_win32_lookup "$pid") || break
+    line=$(fm_win32_proc_fields "$pid") || break
     IFS=$'\t' read -r ppid comm args <<EOF
 $line
 EOF
@@ -218,7 +139,7 @@ EOF
 _fm_win32_pid_alive() {  # <pid>
   local pid=$1 ppid comm args line
   case "$pid" in ''|*[!0-9]*) return 1 ;; esac
-  line=$(_fm_win32_lookup "$pid") || return 1
+  line=$(fm_win32_proc_fields "$pid") || return 1
   IFS=$'\t' read -r ppid comm args <<EOF
 $line
 EOF
