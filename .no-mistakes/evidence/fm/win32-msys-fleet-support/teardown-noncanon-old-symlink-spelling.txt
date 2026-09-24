@@ -1,0 +1,4 @@
+== WSL Ubuntu, OLD symlink spelling (pre-2321c07 test) ==
+cygpath: absent
+not ok - slot-owner-noncanon: teardown refused its own record under a second state spelling: error: teardown refused: state directory is not a real directory at /tmp/fm-teardown-tests.Y1EGHJ/noncanon-state: expected exit 0, got 1
+exit=1

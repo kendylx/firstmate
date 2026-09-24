@@ -1,0 +1,10 @@
+ok - win32-proc: fields returns normalized comm and args for a live pid
+ok - win32-proc: comm falls back to Name when ExecutablePath is empty
+ok - win32-proc: fields fails for a pid absent from the table
+ok - win32-proc: pairs lists every row's pid and ppid
+ok - win32-proc: pid_alive is table membership and rejects non-numeric input
+ok - win32-proc: the table loads once per process no matter how many lookups follow
+ok - win32-proc: a failed table load latches the unavailable flag
+ok - win32-proc: own_pid reports the shell's WINPID from ps -l
+ok - win32-proc: an answering POSIX ps keeps every Win32 lookup closed
+ok - win32-proc: without a powershell binary the capability probe fails closed

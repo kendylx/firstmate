@@ -1,0 +1,34 @@
+== WSL fm-session-lock-ancestry ==
+ok - session-lock: a version-named Claude Code session is identified from its install path and argv[0]
+ok - session-lock: a harness that is pid 1 of its own namespace is examined, not skipped
+ok - session-lock: ordinary script paths under a harness directory are not harness processes
+ok - session-lock: ownership stops at the first non-harness gap above the contiguous run
+ok - session-lock: a live version-named session holding the lock is not mistaken for a stale owner
+ok - session-lock: a trusted same-session id keeps owning a recycled background chain, and nothing weaker does
+ok - session-lock: a trusted id anchors the lock on the model-loop process, anything else on the outermost pid
+ok - session-lock: the Win32 fallback finds the real harness ancestor when Cygwin ps cannot see -o at all
+ok - session-lock: the Win32 fallback answers pid liveness once kill -0 cannot address the pid
+ok - session-lock: a successful POSIX ancestry walk never consults the Win32 fallback
+ok - session-lock: devin is recognized by basename and win32-shaped path
+ok - session-lock: the Electron app, substrings, and devin directories are never the harness
+ok - session-lock: a devin ancestry anchors the lock on the innermost devin.exe
+ok - session-lock e2e: a version-named session claims the home and arms supervision
+ok - session-lock e2e: a session parented by a harness-named daemon claims the home and arms supervision
+ok - session-lock e2e: a version-named session under a harness-named daemon keeps its own lock
+not ok - recycled chain, different session: the guard did not report the live owner 4262: 
+exit=1
+== WSL fm-win32-proc-lib ==
+ok - win32-proc: fields returns normalized comm and args for a live pid
+ok - win32-proc: comm falls back to Name when ExecutablePath is empty
+ok - win32-proc: fields fails for a pid absent from the table
+ok - win32-proc: pairs lists every row's pid and ppid
+ok - win32-proc: pid_alive is table membership and rejects non-numeric input
+ok - win32-proc: the table loads once per process no matter how many lookups follow
+ok - win32-proc: a failed table load latches the unavailable flag
+ok - win32-proc: own_pid reports the shell's WINPID from ps -l
+ok - win32-proc: an answering POSIX ps keeps every Win32 lookup closed
+ok - win32-proc: without a powershell binary the capability probe fails closed
+exit=0
+== WSL fm-spawn-win32-herdr ==
+skip: jq not found (required by the herdr adapter)
+exit=0

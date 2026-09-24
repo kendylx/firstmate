@@ -1,0 +1,5 @@
+host: Linux 4.4.0-26100-Microsoft cygpath=none tree=HEAD 95bdc27 export
+tests/zz-tmp-noncanon.test.sh: line 643: tasks-axi: command not found
+tests/zz-tmp-noncanon.test.sh: line 645: tasks-axi: command not found
+ok - a pool-slot teardown resolves its own meta across state-path spellings
+exit=0

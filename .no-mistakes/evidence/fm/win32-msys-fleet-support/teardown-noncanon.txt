@@ -1,0 +1,10 @@
+== Git Bash / MSYS (alias = cygpath -m drive-letter spelling) ==
+ok - a pool-slot teardown resolves its own meta across state-path spellings
+exit=0
+
+== WSL Ubuntu, no cygpath (alias = <case>/./state dot-component spelling) ==
+cygpath: absent
+/mnt/c/Users/Admin/AppData/Roaming/npm/tasks-axi: 15: exec: node: not found
+/mnt/c/Users/Admin/AppData/Roaming/npm/tasks-axi: 15: exec: node: not found
+ok - a pool-slot teardown resolves its own meta across state-path spellings
+exit=0

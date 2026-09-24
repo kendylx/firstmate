@@ -1,0 +1,9 @@
+ok - lock-junction: a working ln -s never consults the junction fallback
+ok - lock-junction: an occupied lock path fails closed without latching the junction
+ok - lock-junction: the junction fallback claims a verified lock and removal touches only the link
+ok - lock-junction: with no junction primitive the create fails closed and leaves nothing
+ok - lock-junction: a failed junction attempt is latched per process
+
+real	0m7.026s
+user	0m1.056s
+sys	0m1.901s

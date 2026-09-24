@@ -1,0 +1,4 @@
+ok - a foreground-cwd-blind herdr pane is driven through the Git Bash + lease arm
+ok - an unrecognized Windows pane shell refuses before leasing
+ok - an unproven pane worktree releases the lease and refuses
+# all fm-spawn-win32-herdr tests passed

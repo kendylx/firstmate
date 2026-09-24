@@ -1,0 +1,9 @@
+Linux KENDYLX-PC 4.4.0-26100-Microsoft #9278-Microsoft Fri Jan 01 08:00:00 PST 2016 x86_64 GNU/Linux
+cygpath: absent
+ok - lock-junction: a working ln -s never consults the junction fallback
+ok - lock-junction: an occupied lock path fails closed without latching the junction
+ok - lock-junction: junction fallback claims the lock (skipped - no cmd.exe/cygpath here)
+ok - lock-junction: with no junction primitive the create fails closed and leaves nothing
+tests/fm-lock-junction.test.sh: line 151: /tmp/fm-lock-junction.ujWK5O/junction-latch/cmd-was-called: No such file or directory
+tests/fm-lock-junction.test.sh: line 152: /tmp/fm-lock-junction.ujWK5O/junction-latch/cmd-was-called: No such file or directory
+not ok - cmd.exe was spawned  times across two failed creates

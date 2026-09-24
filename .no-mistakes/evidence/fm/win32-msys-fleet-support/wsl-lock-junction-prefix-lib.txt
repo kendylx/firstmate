@@ -1,0 +1,5 @@
+not ok - a stray lock dir was left behind after the closed failure
+lback
+ok - lock-junction: an occupied lock path fails closed without latching the junction
+ok - lock-junction: junction fallback claims the lock (skipped - no cmd.exe/cygpath here)
+exit=0

@@ -1,0 +1,6 @@
+== WSL zz-nm-ancestry-base ==
+not ok - recycled chain, different session: the guard did not report the live owner 11209: 
+exit=1
+== WSL fm-session-lock-ancestry ==
+not ok - recycled chain, different session: the guard did not report the live owner 17987: 
+exit=1

@@ -1,0 +1,2 @@
+host=MINGW64_NT-10.0-26200 dir=/tmp/tmp.TWMFj3Rzh5 verdict=unfaithful caller_dir_after=caller-dir-sentinel leftover_probes=0
+host=Linux dir=/tmp/tmp.UObggSKczU verdict=faithful caller_dir_after=caller-dir-sentinel leftover_probes=0

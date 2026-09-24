@@ -1,0 +1,15 @@
+host: MINGW64_NT-10.0-26200 3.6.10-710e5275.x86_64; ps -o: unavailable
+--- HEAD 95bdc27
+fm-harness.sh           -> claude
+fm-harness.sh ancestry  -> comm claude
+fm_harness_ancestry_pids-> 85600 
+fm_harness_pid_alive(first) -> alive 85600
+bogus 99999991 dead
+omp ancestry check      -> not-omp
+--- base 1e602cd
+fm-harness.sh           -> claude
+fm-harness.sh ancestry  -> comm claude
+fm_harness_ancestry_pids-> 85600 
+fm_harness_pid_alive(first) -> alive 85600
+bogus 99999991 dead
+omp ancestry check      -> not-omp

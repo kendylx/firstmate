@@ -1,0 +1,3 @@
+host: Linux 4.4.0-26100-Microsoft tree=base 1e602cd (symlink spelling)
+not ok - slot-owner-noncanon: teardown refused its own record under a second state spelling: error: teardown refused: state directory is not a real directory at /tmp/fm-teardown-tests.VipsuF/noncanon-state: expected exit 0, got 1
+exit=1

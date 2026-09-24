@@ -1,0 +1,8 @@
+== WSL (fixed test) ==
+cygpath: absent
+ok - lock-junction: a working ln -s never consults the junction fallback
+ok - lock-junction: an occupied lock path fails closed without latching the junction
+ok - lock-junction: junction fallback claims the lock (skipped - no cmd.exe/cygpath here)
+ok - lock-junction: with no junction primitive the create fails closed and leaves nothing
+ok - lock-junction: a failed junction attempt is latched per process
+exit=0

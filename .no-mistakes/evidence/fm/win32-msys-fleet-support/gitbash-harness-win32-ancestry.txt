@@ -1,0 +1,7 @@
+# Git Bash host; ps -o unsupported -> Win32 table fallback. Session runs under claude.exe.
+$ bin/fm-harness.sh ancestry
+comm claude
+rc=0
+$ env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT (all CLAUDE*/CODEX* markers stripped) bin/fm-harness.sh
+claude
+rc=0
