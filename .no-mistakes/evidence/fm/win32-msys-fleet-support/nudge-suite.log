@@ -1,0 +1,14 @@
+ok - fm-sessionstart-nudge: a genuine primary gets one explicitly marked instruction line
+ok - fm-sessionstart-nudge: NO_MISTAKES_GATE is silent
+ok - fm-sessionstart-nudge: .no-mistakes gate common-dir is silent
+ok - fm-sessionstart-nudge: an unmarked linked task worktree is silent
+ok - fm-sessionstart-nudge: a marked linked secondmate home is a primary
+ok - fm-sessionstart-nudge: a checkout without state is silent
+ok - fm-sessionstart-nudge: a lock holder in process ancestry is already run
+ok - fm-sessionstart-nudge: the Win32 walk recognizes a lock holder, a live stranger, and a dead owner
+# skip: unprivileged PID namespaces are unavailable here, so the namespace pid 1 lock owner is unverified
+not ok - OpenCode exact nudge delivery: expected exit 0, got 1
+
+real	0m10.537s
+user	0m1.688s
+sys	0m2.173s

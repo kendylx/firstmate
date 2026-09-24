@@ -1,0 +1,10 @@
+## Git Bash NTFS: private file written with chmod 600
+stat mode after chmod 600: 644
+mode-bit probe: unfaithful (chmod cannot express bits)
+HEAD fm_pr_private_file_valid -> valid
+BASE -> refused (invariant unanswerable, refuses forever)
+## adversarial: hard-linked copy still refused on HEAD (link-count boundary kept)
+HEAD -> refused (correct)
+
+## herdr socket path translation (native herdr reports drive-letter socket)
+herdr socket_path: C:\Users\Admin\AppData\Roaming\herdr\herdr.sock

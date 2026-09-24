@@ -1,0 +1,9 @@
+## crew-style processes with cwd inside task worktree /tmp/tmp.1PAqBGLHoh/wt
+MSYS sleep pid=3522 (cwd wt/sub); native cmd.exe launched via msys pid=3524 (cwd wt)
+lsof on PATH? no
+## HEAD pids_with_cwd_under (extracted verbatim from bin/fm-teardown.sh) -> 
+3522
+3524
+rc=0
+## BASE pids_with_cwd_under ->
+rc=1

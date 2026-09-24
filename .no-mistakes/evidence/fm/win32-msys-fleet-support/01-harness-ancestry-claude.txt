@@ -1,0 +1,16 @@
+## host
+MINGW64_NT-10.0-26200 KENDYLX-PC 3.6.10-710e5275.x86_64 2026-07-28 09:32 UTC x86_64 Msys
+$ ps -o pid= -p $$
+ps: unknown option -- o
+Try `ps --help' for more information.
+
+## fm-harness.sh ancestry (live, under Claude Code claude.exe)
+comm claude
+
+real	0m1.872s
+user	0m0.303s
+sys	0m0.534s
+## fm-harness.sh (own detection)
+claude
+## own detection with env markers stripped (ancestry only)
+claude

@@ -1,0 +1,12 @@
+== host: MINGW64_NT-10.0-26200; ps -o usable? no
+== A. fixture staged WITHOUT fm-win32-proc-lib.sh (pre-repair fixture shape), no lock
+exit=0 output=[/tmp/tmp.LClxXXitma/a/bin/fm-sessionstart-nudge.sh: line 20: /tmp/tmp.LClxXXitma/a/bin/fm-win32-proc-lib.sh: No such file or directory
+⁣FIRSTMATE_OP: v1 session-start: Run `bin/fm-session-start.sh` now, exactly once, before executing any other instructions.]
+== B. fixture staged WITH fm-win32-proc-lib.sh (repaired), no lock -> nudge expected
+exit=0 output=[⁣FIRSTMATE_OP: v1 session-start: Run `bin/fm-session-start.sh` now, exactly once, before executing any other instructions.]
+== C. lock = bash $$ (2704, MSYS pid) - pre-repair test fixture value
+exit=0 output=[⁣FIRSTMATE_OP: v1 session-start: Run `bin/fm-session-start.sh` now, exactly once, before executing any other instructions.]
+== D. lock = this shell's WINPID (60268) - repaired fixture value -> must be silent
+exit=0 output=[]
+== E. adversarial: lock = dead WINPID 999999 -> must nudge
+exit=0 output=[⁣FIRSTMATE_OP: v1 session-start: Run `bin/fm-session-start.sh` now, exactly once, before executing any other instructions.]

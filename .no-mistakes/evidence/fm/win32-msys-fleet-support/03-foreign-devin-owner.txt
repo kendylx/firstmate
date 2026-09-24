@@ -1,0 +1,9 @@
+## devin.exe session holds lock:
+lock acquired: harness pid 84268
+lock line1=84268
+## second session (Claude Code shell) runs fm-lock.sh status on same FM_HOME
+lock: stale (pid 84268 dead or not a harness)
+## second session (Claude Code shell) tries fm-lock.sh acquire on same FM_HOME
+error: another live firstmate session holds the lock (pid 84268); operate read-only until resolved
+rc=1
+lock line1 after=84268

@@ -1,0 +1,21 @@
+## inside process tree whose Win32 ancestor is devin.exe (markers stripped)
+$ fm-harness.sh ancestry
+comm devin
+$ fm-harness.sh
+devin
+$ FM_HOME=<throwaway> fm-lock.sh
+lock acquired: harness pid 81116
+rc=0
+$ fm-lock.sh status
+lock: stale (pid 81116 dead or not a harness)
+lock line1: 81116
+$ second fm-lock.sh (re-acquire, already mine)
+lock acquired: harness pid 81116
+rc=0
+## Win32 row of anchor pid:
+    81116 devin.exe
+## state dir listing (cmd dir shows <JUNCTION> for claim lock if any remains)
+total 1
+drwxr-xr-x 1 Admin 197609 0 Sep 24 14:27 .
+drwxr-xr-x 1 Admin 197609 0 Sep 24 14:27 ..
+-rw-r--r-- 1 Admin 197609 6 Sep 24 14:27 .lock

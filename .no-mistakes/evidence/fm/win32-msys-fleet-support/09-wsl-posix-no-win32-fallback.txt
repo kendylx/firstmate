@@ -1,0 +1,10 @@
+## WSL (POSIX ps works; powershell.exe reachable via interop, traced)
+Linux 4.4.0-26100-Microsoft
+which powershell.exe -> /tmp/tmp.F3unCZib3A/powershell.exe
+$ HEAD fm-harness.sh ancestry -> []
+$ BASE fm-harness.sh ancestry -> []
+$ HEAD fm-harness.sh -> unknown   BASE -> unknown
+fm_harness_pid_alive 54676 (dead in Linux, live claude.exe in Windows) -> not alive (correct)
+fm_harness_ancestry_pids -> none (correct, no harness)
+$ fm-lock.sh status with lock naming pid 54676 -> lock: stale (pid 54676 dead or not a harness)
+## powershell.exe invocations recorded: 0

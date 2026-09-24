@@ -1,0 +1,6 @@
+herdr-reported socket_path (live herdr 0.9.1 session list): C:\Users\Admin\AppData\Roaming\herdr\herdr.sock
+HEAD canonical (drive-letter spelling): [/c/Users/Admin/AppData/Roaming/herdr/herdr.sock] rc=0
+HEAD canonical (POSIX spelling):        [/c/Users/Admin/AppData/Roaming/herdr/herdr.sock]
+same lock identity: yes
+drive-relative C:relative\x.sock rc=1 (expect refuse)
+BASE canonical (drive-letter) rc=1 (refused)

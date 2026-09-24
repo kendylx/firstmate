@@ -1,0 +1,13 @@
+## HEAD: fm_lock_try_create on Git Bash without Developer Mode
+first create rc=0  state=ok
+09/24/2026  02:29 PM    <JUNCTION>     claim [C:\Users\Admin\AppData\Local\Temp\tmp.iTRhduKorl\claim.owner.ldi2sz]
+09/24/2026  02:29 PM    <DIR>          claim.owner.ldi2sz
+contended second create rc=1 (expect 1)
+released rc=0
+
+## BASE (9284978): same primitive
+first create rc=1 (base)
+
+## BASE fm-lock.sh acquire under devin.exe ancestor
+error: cannot locate harness process in ancestry
+rc=1

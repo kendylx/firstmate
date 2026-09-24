@@ -1,0 +1,11 @@
+## Git Bash / MSYS (noacl NTFS)
+platform: MINGW64_NT-10.0-26200  namespace stat mode after chmod 777: 755
+non-700 namespace -> ACCEPTED
+after chmod 700 (mode 755) -> ACCEPTED
+PR private file mode 644 vs required 600 -> valid
+
+## WSL Ubuntu (POSIX-faithful chmod)
+platform: Linux  namespace stat mode after chmod 777: 777
+non-700 namespace -> REFUSED
+after chmod 700 (mode 700) -> ACCEPTED
+PR private file mode 644 vs required 600 -> REFUSED

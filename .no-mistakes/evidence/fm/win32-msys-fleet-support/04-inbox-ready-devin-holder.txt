@@ -1,0 +1,5 @@
+## holder devin.exe pid 84268 alive? (Win32 table)
+84268 devin      
+## FM_HOME=<throwaway> fm-inbox.sh ready
+{"schema":"fm-primary-ready.v1","home":"tmp.09EQF9nft7/home2","observed_at":"2026-09-24T07:28:49Z","lock":{"state":"stale","pid":84268,"live_harness":false},"wake_consumer":{"state":"unknown","reason":"supervision-model-unknown-for-home","beacon_age_seconds":null},"posture":{"state":"present"},"can_receive":false}
+rc=0

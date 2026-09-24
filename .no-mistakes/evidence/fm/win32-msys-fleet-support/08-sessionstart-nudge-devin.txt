@@ -1,0 +1,7 @@
+(NO_MISTAKES_GATE unset for the throwaway primary home /tmp/tmp.YhxuUxyRaX)
+## [devin.exe session] fm-lock.sh
+lock acquired: harness pid 107696
+## [devin.exe session] fm-sessionstart-nudge.sh (expect silence: lock held by own ancestor)
+output=[] rc=0
+## [other session: Claude Code shell] fm-sessionstart-nudge.sh against same home (expect nudge line: lock held by a live foreign devin)
+output=[M-bM-^AM-#FIRSTMATE_OP: v1 session-start: Run `bin/fm-session-start.sh` now, exactly once, before executing any other instructions.]

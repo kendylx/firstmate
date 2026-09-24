@@ -1,0 +1,4 @@
+## BASE (9284978) fm-harness.sh ancestry, markers stripped
+rc=0 (empty output = ancestry blind)
+## BASE own detection markers stripped
+unknown
