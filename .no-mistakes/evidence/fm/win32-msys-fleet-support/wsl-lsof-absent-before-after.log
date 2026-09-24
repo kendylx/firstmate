@@ -1,0 +1,6 @@
+===== prefix tree (Linux 4.4.0-26100-Microsoft, lsof=/usr/bin/lsof) =====
+not ok - lsof-absent-process-group-reap: teardown should succeed: expected exit 0, got 126
+exit=1
+===== fixed tree (Linux 4.4.0-26100-Microsoft, lsof=/usr/bin/lsof) =====
+ok - missing lsof falls back to reaping the tmux pane process group
+exit=0
