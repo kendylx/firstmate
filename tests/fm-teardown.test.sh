@@ -676,7 +676,10 @@ make_path_without_lsof() {  # <case-dir>
     mkdir mktemp mv perl ps readlink realpath rm sed sh sleep sort stat tail timeout tr uname wc xargs; do
     resolved=$(command -v "$cmd" 2>/dev/null) || continue
     case "$resolved" in
-      /*) printf '#!%s\nexec "%s" "$@"\n' "$bash_res" "$resolved" > "$path_dir/$cmd" ;;
+      /*)
+        printf '#!%s\nexec "%s" "$@"\n' "$bash_res" "$resolved" > "$path_dir/$cmd"
+        chmod +x "$path_dir/$cmd"
+        ;;
     esac
   done
   printf '%s\n' "$path_dir"
