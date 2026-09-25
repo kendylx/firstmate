@@ -92,7 +92,13 @@ assert_present "$H/state/when/when-arm-test.trust" "arm writes the trust binding
 assert_present "$H/state/procevent/when-arm-test.source" "arm registers the process-event source"
 mode=$(PATH="${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}" bash -c \
   '. "$1/bin/fm-pr-lib.sh"; fm_pr_file_mode "$2"' _ "$ROOT" "$H/state/when/when-arm-test.spec")
-assert_contains "$mode" 600 "the spec is private"
+# On a mode-inexpressible filesystem (Git Bash/MSYS noacl mounts) 600 is
+# unanswerable and the platform ACL owns the file's isolation; the shared
+# probe is the same fallback fm_pr_private_file_valid uses.
+[ "$mode" = 600 ] \
+  || PATH="${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}" bash -c \
+    '. "$1/bin/fm-pr-lib.sh"; fm_pr_mode_bits_unfaithful "$2"' _ "$ROOT" "$H/state/when" \
+  || fail "the spec is private (mode: ${mode:-unreadable})"
 if when "$H" arm arm-test --condition true --action true 2>"$TMP_ROOT/dup.err"; then
   fail "re-arming an existing watch must be refused"
 fi
@@ -107,6 +113,18 @@ assert_absent "$H/state/procevent/when-arm-test.source" "retire drops the regist
 out=$(when "$H" retire arm-test)
 assert_contains "$out" "retired: when-arm-test" "retire is idempotent"
 pass "arm binds, refuses duplicates, and retire cleans up"
+
+# Everything below needs a live detached runner, which requires POSIX process
+# groups: bin/fm-procevent.sh's require_isolated_group proves the runner leads
+# its own group through `ps -o pgid=`, and Git Bash/MSYS has neither that ps
+# form nor setsid, so every launch lands in launch-failed instead. Keep the
+# runner-free arm/retire binding above active everywhere and stop here where
+# the substrate is absent.
+if ! ps -o pgid= -p "$$" >/dev/null 2>&1; then
+  pass "detached-runner cases skipped: host cannot inspect process groups (ps -o pgid unsupported)"
+  printf 'all fm-procevent-when tests passed\n'
+  exit 0
+fi
 
 # --- concurrent arms publish exactly one complete registration ---------------
 H="$TMP_ROOT/h-concurrent-arm"; new_home "$H"
